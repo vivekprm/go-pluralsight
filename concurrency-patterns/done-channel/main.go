@@ -45,34 +45,42 @@ func main() {
 
 func consumeCows(done, cows <-chan interface{}) {
 	defer wg.Done()
-	for {
-		select {
-		case <-done:
-			return
-		case cow, ok := <-cows:
-			if !ok {
-				fmt.Println("Channel closed")
-				return
-			}
-			// Complex logic
-			fmt.Println(cow)
-		}
+	for val := range orDone(done, cows) {
+		fmt.Println(val)
 	}
 }
 
 func consumePigs(done, pigs <-chan interface{}) {
 	defer wg.Done()
-	for {
-		select {
-		case <-done:
-			return
-		case pig, ok := <-pigs:
-			if !ok {
-				fmt.Println("Channel closed")
-				return
-			}
-			// Complex logic
-			fmt.Println(pig)
-		}
+	for val := range orDone(done, pigs) {
+		fmt.Println(val)
 	}
+}
+
+func orDone(done, c <-chan interface{}) <-chan interface{} {
+	relayStream := make(chan interface{})
+	go func() {
+		defer close(relayStream)
+		for {
+			select {
+			case <-done:
+				return
+			case val, ok := <-c:
+				if !ok {
+					return
+				}
+				// Put on relayStream
+				select {
+				case relayStream <- val:
+				// Reason we need to put this case here is, if we don't have this and we
+				// put a value on releayStream e.g. and caller of orDone never read that
+				// value, this goroutine will be blocked because relayStream is unbuffered
+				// channel.
+				case <-done:
+					return
+				}
+			}
+		}
+	}()
+	return relayStream
 }

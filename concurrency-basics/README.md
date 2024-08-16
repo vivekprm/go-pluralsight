@@ -443,3 +443,5 @@ func consumePigs(done, pigs <-chan interface{}) {
 }
 ```
 
+Now lets see how we can use orDone channel and remove all this boilerplate.
+
