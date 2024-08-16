@@ -318,3 +318,128 @@ func main() {
 ```
 
 Now we have 4 concurrent workers. Now if we look at CPU usage, it almost uses 400% CPU.
+
+# Concurrency Patterns
+## Done Channel
+Let's consider below example:
+
+```go
+func main() {
+	done := make(chan interface{})
+    defer close(done)
+	go doSomething1(done)
+	go doSomething2(done)
+}
+```
+
+Here we are forking two goroutines from main. What happens to these goroutines, if main shutsdown for some reason?
+
+So here we have ```defer close(done)``` which will cause done channel to be closed and we can gracefully exit from goroutines. So main notifies done channel, which in turn notfies goroutines to close themselves.
+
+So now let's look at what happens inside these goroutines.
+
+```go
+func doSomething1(done chan interface{}) {
+	for {
+		select {
+		case <- done:
+			return
+		}
+	}
+	// Some other logic
+}
+
+func doSomething2(done chan interface{}) {
+	for {
+		select {
+		case <- done:
+			return
+		}
+	}
+	// Some other logic
+}
+```
+
+So we will be writing boilerplate logic to handle done channel in each of these goroutines. Instead we can use and extract ```orDone``` method/pattern to remove this duplicate logic. Let's look at complete code for done channel handling.
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+var wg sync.WaitGroup
+
+func main() {
+	done := make(chan interface{})
+	defer close(done)
+
+	cows := make(chan interface{}, 100)
+	pigs := make(chan interface{}, 100)
+
+	// Producers
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case cows <- "moo":
+			}
+		}
+	}()
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case pigs <- "oink":
+			}
+		}
+	}()
+
+	// consumers
+	wg.Add(1)
+	go consumeCows(done, cows)
+	wg.Add(1)
+	go consumePigs(done, pigs)
+
+	wg.Wait()
+}
+
+func consumeCows(done, cows <-chan interface{}) {
+	defer wg.Done()
+	for {
+		select {
+		case <-done:
+			return
+		case cow, ok := <-cows:
+			if !ok {
+				fmt.Println("Channel closed")
+				return
+			}
+			// Complex logic
+			fmt.Println(cow)
+		}
+	}
+}
+
+func consumePigs(done, pigs <-chan interface{}) {
+	defer wg.Done()
+	for {
+		select {
+		case <-done:
+			return
+		case pig, ok := <-pigs:
+			if !ok {
+				fmt.Println("Channel closed")
+				return
+			}
+			// Complex logic
+			fmt.Println(pig)
+		}
+	}
+}
+```
+
