@@ -252,3 +252,69 @@ We see we get one and the other, eventhough the first go routine is ready to sen
 
 So to fix that instead of receiving on in an infinite for loop in main goroutine we can use select statement, which allows us to receive from whichever channel is ready.
 
+# Worker Pools
+This is where we have a queue of work to be done and multiple concurrent workers pulling items off the queue.
+
+Instead of declaring a channel as bidirectional we can mention is a channel only recevies from the channel (<-chan) or only send to the channel (chan <-). This reduces the chance of bugs. 
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	jobs := make(chan int, 100)
+	results := make(chan int, 100)
+
+	go worker(jobs, results)
+
+	for i := 0; i < 100; i++ {
+		jobs <- i
+	}
+	close(jobs)
+
+	for j := 0; j < 100; j++ {
+		fmt.Println(<-results)
+	}
+}
+
+func worker(jobs <-chan int, results chan<- int) {
+	for n := range jobs {
+		results <- fib(n)
+	}
+}
+
+func fib(n int) int {
+	if n <= 1 {
+		return n
+	}
+	return fib(n-1) + fib(n-2)
+}
+```
+
+It's higly inefficient algorithm it slows down as it progresses. It almost takes 100% CPU.
+
+We can add more workers and it will start consuming more CPU.
+
+```go
+func main() {
+	jobs := make(chan int, 100)
+	results := make(chan int, 100)
+
+	go worker(jobs, results)
+    go worker(jobs, results)
+    go worker(jobs, results)
+    go worker(jobs, results)
+
+	for i := 0; i < 100; i++ {
+		jobs <- i
+	}
+	close(jobs)
+
+	for j := 0; j < 100; j++ {
+		fmt.Println(<-results)
+	}
+}
+```
+
+Now we have 4 concurrent workers. Now if we look at CPU usage, it almost uses 400% CPU.
