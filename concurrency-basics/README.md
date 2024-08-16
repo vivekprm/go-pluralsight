@@ -193,3 +193,62 @@ func main() {
 So here we don't need to manually check if channel is closed.
 
 We looked at how channel operations are blocking. Let's look at something simple.
+```go
+func main() {
+	c := make(chan string)
+	// Send on channel
+	c <- "hello"
+	// Receive from channel
+	msg := <-c
+	fmt.Println(msg)
+}
+```
+
+We might think that it will work. But it's going to deadlock again as sending on channel is blocking and there is no other goroutine to receive on the channel and the code never progresses to receive line.  
+
+So alternatively we can receive on other goroutine or we can use a buffer channel. So we can give a buffer size and it won't block until the buffer is full.
+```go
+func main() {
+	c := make(chan string, 2)
+	// Send on channel
+	c <- "hello"
+    c <- " world"
+	// Receive from channel
+	msg := <-c
+	fmt.Println(msg)
+    msg = <-c
+	fmt.Println(msg)
+}
+```
+
+# Select statement
+If we have two goroutines and two channels as below:
+```go
+func main() {
+	ch1 := make(chan string)
+	ch2 := make(chan string)
+
+	go func() {
+		for {
+			ch1 <- "every 500ms"
+			time.Sleep(500 * time.Millisecond)
+		}
+	}()
+	go func() {
+		for {
+			ch2 <- "every two second"
+			time.Sleep(2 * time.Second)
+		}
+	}()
+
+	for {
+		fmt.Println(<-ch1)
+		fmt.Println(<-ch2)
+	}
+}
+```
+
+We see we get one and the other, eventhough the first go routine is ready to send. It is because we are gonna block eachtime waiting for the slower one. So everytime we try to receive from channel 2 we are gonna wait to 2 seconds. So it's really slowing down the first goroutine.
+
+So to fix that instead of receiving on in an infinite for loop in main goroutine we can use select statement, which allows us to receive from whichever channel is ready.
+
